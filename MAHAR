@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mahar Live Stream</title>
+    <!-- Tailwind CSS for basic styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .video-container {
+            width: 100%;
+            max-width: 900px; /* Max width for larger screens */
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        video {
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+            background-color: #000; /* Black background for video area */
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+            text-align: center;
+        }
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+            .video-container {
+                padding: 15px;
+            }
+        }
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 1.2rem;
+            }
+            .video-container {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="video-container">
+        <h1 class="text-2xl font-bold mb-4">Mahar Live Stream</h1>
+        <video id="video" controls class="w-full h-auto rounded-lg shadow-md"></video>
+        <div id="message-box" class="mt-4 p-3 bg-red-100 text-red-700 rounded-lg hidden w-full"></div>
+    </div>
+
+    <!-- Hls.js library for playing M3U8 streams -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const video = document.getElementById('video');
+            const videoSrc = 'https://tv.mahar.live/mahar/website.stream/playlist.m3u8';
+            const messageBox = document.getElementById('message-box');
+
+            // Function to display messages in the message box
+            function showMessage(message, type = 'error') {
+                messageBox.textContent = message;
+                messageBox.className = `mt-4 p-3 rounded-lg w-full ${type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`;
+                messageBox.classList.remove('hidden');
+            }
+
+            // Check if Hls.js is supported by the browser
+            if (Hls.isSupported()) {
+                const hls = new Hls();
+                hls.loadSource(videoSrc);
+                hls.attachMedia(video);
+
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    video.play()
+                        .then(() => {
+                            // Video started playing successfully
+                            messageBox.classList.add('hidden'); // Hide any previous error messages
+                        })
+                        .catch(error => {
+                            // Autoplay was prevented
+                            showMessage('Autoplay prevented. Please click the play button to start the stream.', 'info');
+                            console.error('Autoplay prevented:', error);
+                        });
+                });
+
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    let errorMessage = 'An unknown error occurred.';
+                    if (data.fatal) {
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                errorMessage = 'Network error: Could not load the video stream. Please check your internet connection.';
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                errorMessage = 'Media error: The video stream is unplayable.';
+                                break;
+                            default:
+                                errorMessage = `Fatal error: ${data.details}. Please try refreshing the page.`;
+                                break;
+                        }
+                        showMessage(errorMessage);
+                        console.error('Hls.js fatal error:', data);
+                        // Attempt to recover from errors
+                        if (data.type === Hls.ErrorTypes.NETWORK_ERROR || data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                             hls.destroy(); // Destroy and re-initialize Hls.js
+                             if (Hls.isSupported()) {
+                                 const newHls = new Hls();
+                                 newHls.loadSource(videoSrc);
+                                 newHls.attachMedia(video);
+                                 newHls.on(Hls.Events.MANIFEST_PARSED, () => video.play());
+                                 newHls.on(Hls.Events.ERROR, (event, data) => {
+                                     console.error('Hls.js recovery error:', data);
+                                     showMessage('Attempted recovery, but still encountering issues. Please try again later.');
+                                 });
+                             }
+                        }
+                    } else {
+                        // Non-fatal errors
+                        console.warn('Hls.js non-fatal error:', data);
+                    }
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // Native HLS support for browsers like Safari
+                video.src = videoSrc;
+                video.addEventListener('loadedmetadata', () => {
+                    video.play()
+                        .then(() => {
+                            messageBox.classList.add('hidden');
+                        })
+                        .catch(error => {
+                            showMessage('Autoplay prevented. Please click the play button to start the stream.', 'info');
+                            console.error('Autoplay prevented (native HLS):', error);
+                        });
+                });
+                video.addEventListener('error', (e) => {
+                    let errorMessage = 'An error occurred while playing the video (native HLS).';
+                    if (video.error) {
+                        switch (video.error.code) {
+                            case video.error.MEDIA_ERR_ABORTED:
+                                errorMessage = 'Video playback aborted.';
+                                break;
+                            case video.error.MEDIA_ERR_NETWORK:
+                                errorMessage = 'Network error: Video download failed.';
+                                break;
+                            case video.error.MEDIA_ERR_DECODE:
+                                errorMessage = 'Video decode error: The video is corrupted or uses unsupported features.';
+                                break;
+                            case video.error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                                errorMessage = 'Video source not supported by your browser.';
+                                break;
+                            default:
+                                errorMessage = 'An unknown video error occurred.';
+                                break;
+                        }
+                    }
+                    showMessage(errorMessage);
+                    console.error('Native video error:', e, video.error);
+                });
+            } else {
+                // Browser does not support HLS
+                showMessage('Your browser does not support HLS video streams. Please try a different browser (e.g., Chrome, Firefox, Safari).');
+            }
+        });
+    </script>
+</body>
+</html>
+
